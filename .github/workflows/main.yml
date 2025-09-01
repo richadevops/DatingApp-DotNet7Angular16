@@ -34,7 +34,7 @@ jobs:
 
     - name: npm build
       working-directory: client
-      run: npm run build
+      run: npm run build --configuration production --no-build-optimizer
 
     - name: dotnet publish
       run: dotnet publish API/API.csproj -o publish
