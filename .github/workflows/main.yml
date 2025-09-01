@@ -29,7 +29,8 @@ jobs:
         node-version: '18.x'
 
     - name: npm install
-      run: npm install
+      working-directory: client
+      run: npm ci
 
     - name: npm build
       working-directory: client
