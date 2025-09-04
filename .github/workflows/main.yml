@@ -46,5 +46,49 @@ jobs:
         name: build artifact
         path: publish/
 
-     
+  deploy:
+    needs: build
+    runs-on: windows-latest
+    steps:
+    - name: download build artifacts
+      uses: actions/download-artifact@v4.1.7
+      with:
+        name: build artifact
+        path: publish
+
+    - name: Deploy to remote IIS
+      shell: pwsh
+      env:
+        WINRM_HOST: ${{ secrets.WINRM_HOST }}
+        WINRM_USER: ${{ secrets.WINRM_USER }}
+        WINRM_PASS: ${{ secrets.WINRM_PASS }}
+      run: |
+        $username = $env:WINRM_USER
+        $password = ConvertTo-SecureString $env:WINRM_PASS -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential ($username, $password)
+        Set-Item -Path WSMan:\localhost\Client\AllowUnencrypted -Value $true
+        Set-Item -Path WSMan:\localhost\Client\TrustedHosts -Value $env:WINRM_HOST -Force
+        $session = New-PSSession -ComputerName $env:WINRM_HOST -Credential $cred -Authentication Basic
+        # Create IIS folder and clean old files
+        Invoke-Command -Session $session -ScriptBlock {
+          $siteName = "dating-app"
+          $port = 8085
+          $physicalPath = "C:\inetpub\$siteName"
+          
+          if (!(Test-Path $physicalPath)) {
+            New-Item -Path $physicalPath -ItemType Directory -Force
+          }
+          Get-ChildItem -Path $physicalPath -Recurse -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Import-Module WebAdministration
+          
+          if (-Not (Get-Website | Where-Object { $_.Name -eq $siteName })) {
+            New-Website -Name $siteName -Port $port -PhysicalPath $physicalPath -Force
+          } else {
+            Restart-WebAppPool -Name $siteName
+          }
+        }
+        # Copy files to remote machine using PowerShell session
+        Copy-Item -Path ".\publish\*" -Destination "C:\inetpub\dating-app" -Recurse -Force -ToSession $session
+        # Clean up
+        Remove-PSSession -Session $session
      
